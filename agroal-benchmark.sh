@@ -1,6 +1,6 @@
 #!/bin/bash
 
-JAVA_OPTIONS="-server -XX:-RestrictContended -XX:+AggressiveOpts -XX:+UseFastAccessorMethods -Xms1096m -Xmx1096m"
+JAVA_OPTIONS="-server -Xms1096m -Xmx1096m"
 
 BENCHMARK_JAR="./target/agroal-benchmark.jar"
 

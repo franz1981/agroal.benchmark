@@ -21,32 +21,22 @@ import static java.util.logging.Logger.getLogger;
 /**
  * @author <a href="lbarreiro@redhat.com">Luis Barreiro</a>
  */
-public interface MockDriver extends Driver {
+public class MockDriver implements Driver {
 
-    static void registerMockDriver(Class<? extends Connection> connectionType) {
+    public static void registerMockDriver() {
         try {
-            registerDriver(
-                    new MockDriver() {
-                        @Override
-                        public Connection connect(String url, Properties info) throws SQLException {
-                            try {
-                                return connectionType.newInstance();
-                            } catch ( InstantiationException | IllegalAccessException e ) {
-                                throw new SQLException( "Cannot create mock connection", e );
-                            }
-                        }
-                    }
-            );
+            registerDriver(new MockDriver());
         } catch ( SQLException e ) {
             getLogger( MockDriver.class.getName() ).log( WARNING, "Unable to register MockDriver into Driver Manager", e );
         }
     }
 
-    static void registerMockDriver() {
-        registerMockDriver( MockConnection.Empty.class );
+    @Override
+    public Connection connect(String url, Properties info) {
+        return new MockConnection.Empty();
     }
 
-    static void deregisterMockDriver() {
+    public static void deregisterMockDriver() {
         try {
             deregisterDriver( getDriver( "" ) );
         } catch ( SQLException e ) {
@@ -57,37 +47,32 @@ public interface MockDriver extends Driver {
     // --- //
 
     @Override
-    default Connection connect(String url, Properties info) throws SQLException {
-        return null;
-    }
-
-    @Override
-    default boolean acceptsURL(String url) throws SQLException {
+    public boolean acceptsURL(String url) throws SQLException {
         return true;
     }
 
     @Override
-    default DriverPropertyInfo[] getPropertyInfo(String url, Properties info) throws SQLException {
+    public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) throws SQLException {
         return new DriverPropertyInfo[0];
     }
 
     @Override
-    default int getMajorVersion() {
+    public int getMajorVersion() {
         return 0;
     }
 
     @Override
-    default int getMinorVersion() {
+    public int getMinorVersion() {
         return 0;
     }
 
     @Override
-    default boolean jdbcCompliant() {
+    public boolean jdbcCompliant() {
         return false;
     }
 
     @Override
-    default Logger getParentLogger() throws SQLFeatureNotSupportedException {
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
         return null;
     }
 }

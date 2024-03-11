@@ -41,8 +41,8 @@
     <properties>
         <!-- Dependency versions. Please keep alphabetical. Each version property should be of the form "version.<groupId>" -->
         <!-- In cases where multiple artifacts use the same groupId but have different versions, add the artifactId or other qualifier to the property name -->
-        <version.io.agroal>0.2-SNAPSHOT</version.io.agroal>
-        <version.org.openjdk.jmh>1.18</version.org.openjdk.jmh>
+        <version.io.agroal>2.3</version.io.agroal>
+        <version.org.openjdk.jmh>1.37</version.org.openjdk.jmh>
     </properties>
     <dependencies>
         <dependency>
@@ -53,6 +53,12 @@
         <dependency>
             <groupId>io.agroal</groupId>
             <artifactId>agroal-pool</artifactId>
+            <version>${version.io.agroal}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.agroal</groupId>
+            <artifactId>agroal-hikari</artifactId>
             <version>${version.io.agroal}</version>
             <scope>runtime</scope>
         </dependency>

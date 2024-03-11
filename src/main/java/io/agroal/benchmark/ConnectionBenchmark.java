@@ -22,24 +22,24 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.BenchmarkParams;
 import org.openjdk.jmh.infra.Blackhole;
-import sun.misc.Contended;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
-import static io.agroal.api.configuration.AgroalConnectionPoolConfiguration.PreFillMode.MAX;
 import static io.agroal.api.configuration.AgroalDataSourceConfiguration.DataSourceImplementation.AGROAL;
 import static io.agroal.api.configuration.AgroalDataSourceConfiguration.DataSourceImplementation.HIKARI;
 
 /**
  * @author <a href="lbarreiro@redhat.com">Luis Barreiro</a>
  */
-@Warmup( iterations = 4 )
-@Measurement( iterations = 10 )
-@Fork( value = 5 )
+@Warmup( iterations = 10, time = 500, timeUnit = TimeUnit.MILLISECONDS)
+@Measurement( iterations = 10, time = 200, timeUnit = TimeUnit.MILLISECONDS)
+@Fork( value = 2 )
 @BenchmarkMode( Mode.Throughput )
 @OutputTimeUnit( TimeUnit.MILLISECONDS )
 @State( Scope.Benchmark )
@@ -49,8 +49,12 @@ public class ConnectionBenchmark {
 
     private static DataSource dataSource;
 
-    @Param( {"agroal", "hikari"} )
-    public String poolType;
+    public enum PoolType {
+        agroal, hikari
+    }
+
+    @Param
+    public PoolType poolType;
 
     @Param( {"50", "20", "8"} )
     public int poolSize;
@@ -58,44 +62,62 @@ public class ConnectionBenchmark {
     @Param( {"jdbc:stub"} )
     public String jdbcUrl;
 
+    @Param( {"10"} )
+    public int preWork;
+
+    @Param( {"10"} )
+    public int postWork;
+
+    @Param( {"false"} )
+    public boolean yield;
+
+    @Param( {"500"} )
+    public int sleepUs;
+
     @Benchmark
-    @CompilerControl( CompilerControl.Mode.INLINE )
-    public static Connection cycleConnection(ThreadState state) throws SQLException {
+    @CompilerControl( CompilerControl.Mode.DONT_INLINE )
+    public Connection cycleConnection() throws SQLException {
         Connection connection = dataSource.getConnection();
 
         // Do some work
-        //doWork( false, state.random.nextInt() );
+        doWork(preWork);
 
-        // Yeld!
-        //doYeld( false );
+        // Yield!
+        doYield( yield );
 
-        // Wait some time (5ms average)
-        //doSleep( false, state.random.nextInt( 2 ) );
+        // Wait some time
+        doSleep(sleepUs);
 
         // Do some work
-        //doWork( false, state.random.nextInt( 1000 * 1 ) );
+        doWork(postWork);
 
         connection.close();
         return connection;
     }
 
-    public static void doWork(boolean b, long amount) {
-        if ( b ) {
+    public static void doWork(long amount) {
+        if ( amount > 0 ) {
             Blackhole.consumeCPU( amount );
         }
     }
 
-    public static void doYeld(boolean b) {
+    public static void doYield(boolean b) {
         if ( b ) {
             Thread.yield();
         }
     }
 
-    public static void doSleep(boolean b, long amount) {
-        if ( b ) {
-            try {
-                Thread.sleep( amount );
-            } catch ( InterruptedException ignore ) {
+    public static void doSleep(long us) {
+        if (us > 0) {
+            long nsToSleep = us * 1000;
+            long started = System.nanoTime();
+            long remaining;
+            while ((remaining = nsToSleep - (System.nanoTime() - started)) > 0) {
+                if (remaining > 50_000) {
+                    LockSupport.parkNanos(remaining);
+                } else {
+                    Thread.yield();
+                }
             }
         }
     }
@@ -103,25 +125,28 @@ public class ConnectionBenchmark {
     // --- //
 
     @Setup( Level.Trial )
-    public void setup(BenchmarkParams params) throws SQLException {
+    public void setup() throws SQLException {
         MockDriver.registerMockDriver();
 
         AgroalDataSourceConfigurationSupplier supplier = new AgroalDataSourceConfigurationSupplier()
                 .metricsEnabled( false )
                 .connectionPoolConfiguration( cp -> cp
-                        .preFillMode( MAX )
+                        .initialSize(poolSize)
                         .maxSize( poolSize )
+                        .validationTimeout( Duration.ofMinutes( 15 ))
                         .connectionFactoryConfiguration( cf -> cf
                                 .jdbcUrl( jdbcUrl )
-                                .driverClassName( MockDriver.class.getName() )
+                                .connectionProviderClassName( MockDriver.class.getName() )
                         )
                 );
 
         switch ( poolType ) {
-            case "hikari":
+            case hikari:
                 supplier.dataSourceImplementation( HIKARI );
-            case "agroal":
+                break;
+            case agroal:
                 supplier.dataSourceImplementation( AGROAL );
+                break;
         }
         dataSource = AgroalDataSource.from( supplier );
     }
@@ -133,15 +158,12 @@ public class ConnectionBenchmark {
         MockDriver.deregisterMockDriver();
     }
 
-    @State( Scope.Thread )
-    public static class ThreadState {
-
-        @Contended
-        private volatile Random random;
-
-        @Setup
-        public void setupContext(ConnectionBenchmark state) throws Throwable {
-            random = new Random( ConnectionBenchmark.RANDOM.nextLong() );
-        }
+    public static void main(String[] args) throws SQLException {
+        ConnectionBenchmark benchmark = new ConnectionBenchmark();
+        benchmark.poolSize = 1;
+        benchmark.poolType = PoolType.hikari;
+        benchmark.jdbcUrl = "jdbc:stub";
+        benchmark.setup();
+        benchmark.cycleConnection();
     }
 }
